@@ -9,3 +9,9 @@ __pycache__/
 *.tar.gz
 node_modules/
 .env
+.env.example
+verify_learning.md
+QUICK_TEST_EXAMPLES.md
+CURL_EXAMPLES.md
+ENHANCED_LEARNING.md
+QUICK_TEST.md
