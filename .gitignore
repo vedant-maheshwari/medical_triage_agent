@@ -1,0 +1,11 @@
+# Python virtual environment
+wound_triage_api/
+*.pyc
+__pycache__/
+*.dylib
+*.so
+*.dll
+*.zip
+*.tar.gz
+node_modules/
+.env
