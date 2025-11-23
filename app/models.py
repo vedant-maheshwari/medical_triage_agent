@@ -8,6 +8,24 @@ class Triage(BaseModel):
     severity: int = Field(gt=0, le=5, description="Severity 1-5")
     notes: str = Field(description="Clinical rationale and any uncertainties")
 
+# Auth Models
+class User(BaseModel):
+    username: str
+    full_name: Optional[str] = None
+    role: str = "doctor"  # doctor, admin
+    disabled: Optional[bool] = None
+
+class UserInDB(User):
+    hashed_password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
+    role: Optional[str] = None
+
 # API Request/Response Models
 class TriageRequest(BaseModel):
     description: Optional[str] = Field(None, min_length=1, max_length=1000)
@@ -28,6 +46,7 @@ class TriageResponse(BaseModel):
     urgency_minutes: int
     recommended_action: str
     priority: str
+    status: str = "pending"
 
 class DoctorValidation(BaseModel):
     case_id: str
@@ -50,6 +69,8 @@ class CaseDetail(BaseModel):
     ai_severity: int
     ai_notes: str
     has_image: bool
+    status: str = "pending" # pending, in_progress, completed
+    assigned_to: Optional[str] = None
 
 class LearningAnalytics(BaseModel):
     total_feedback: int

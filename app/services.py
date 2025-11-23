@@ -27,6 +27,7 @@ from sentence_transformers import SentenceTransformer
 # === Local Imports ===
 from app.database import get_collection, get_mongo_client
 from app.config import settings, SPECIALTY_OPTIONS
+from app.models import User, UserInDB
 
 load_dotenv()
 
@@ -703,7 +704,9 @@ def save_case(patient_id: str, text: str, image: Optional[bytes], ai_result: Tri
         "doctor_notes": None,
         "correction_score": None,
         "feedback_given": False,
-        "learned_from": False
+        "learned_from": False,
+        "status": "pending",
+        "assigned_to": None
     }
     
     result = feedback.insert_one(document)
@@ -723,6 +726,45 @@ def get_pending_reviews() -> List[Dict]:
     ).sort("timestamp", -1)
     
     return list(cursor)
+
+def assign_case(case_id: str, doctor_username: str):
+    """Assign a case to a doctor (lock it)"""
+    feedback = get_collection("feedback")
+    
+    # Check if already assigned
+    case = feedback.find_one({"_id": ObjectId(case_id)})
+    if not case:
+        raise ValueError("Case not found")
+    
+    if case.get("assigned_to") and case.get("assigned_to") != doctor_username:
+        raise ValueError(f"Case already assigned to {case.get('assigned_to')}")
+    
+    feedback.update_one(
+        {"_id": ObjectId(case_id)},
+        {"$set": {
+            "assigned_to": doctor_username,
+            "status": "in_progress"
+        }}
+    )
+    return True
+
+def get_user_by_username(username: str) -> Optional[UserInDB]:
+    """Get user by username"""
+    users = get_collection("users")
+    user_doc = users.find_one({"username": username})
+    if user_doc:
+        return UserInDB(**user_doc)
+    return None
+
+def create_user(user: UserInDB):
+    """Create a new user"""
+    users = get_collection("users")
+    if get_user_by_username(user.username):
+        raise ValueError("Username already registered")
+    
+    user_dict = user.dict()
+    users.insert_one(user_dict)
+    return user
 
 def submit_correction(case_id: str, doctor_result: Triage) -> tuple:
     """Submit correction and trigger learning"""

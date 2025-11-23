@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Medical Triage AI</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <header>
+        <nav>
+            <div class="logo">
+                <a href="index.html" style="color: inherit; text-decoration: none;">
+                    <span>🩺</span> Medical Triage AI
+                </a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container flex-center" style="min-height: 80vh;">
+        <div class="card" style="width: 100%; max-width: 400px;">
+            <h2 class="text-center">Portal Login</h2>
+            <p class="text-center mb-1">Access for Doctors & Admins</p>
+
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" required>
+                </div>
+
+                <div id="errorMessage" style="color: var(--danger-color); margin-bottom: 1rem; display: none;"></div>
+
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Login</button>
+            </form>
+
+            <div class="mt-1 text-center">
+                <a href="index.html" style="font-size: 0.9rem;">Back to Home</a>
+            </div>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('errorMessage');
+
+            try {
+                errorDiv.style.display = 'none';
+                await login(username, password);
+
+                // Redirect based on role
+                const user = await getCurrentUser();
+                if (user.role === 'admin') {
+                    window.location.href = 'admin.html';
+                } else {
+                    window.location.href = 'doctor.html';
+                }
+            } catch (error) {
+                errorDiv.textContent = error.message || "Login failed";
+                errorDiv.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+
+</html>

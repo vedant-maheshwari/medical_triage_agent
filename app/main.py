@@ -1,12 +1,14 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from typing import Optional, List, Dict, Any
 import base64
 import uvicorn
 from datetime import datetime
 from bson import ObjectId
 import os
+from datetime import timedelta
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from app.services import (
@@ -23,7 +25,11 @@ from app.services import (
     get_current_prompt,
     get_pattern_context,
     initialize_system,
-    Triage
+    initialize_system,
+    Triage,
+    assign_case,
+    create_user,
+    get_user_by_username
 )
 from app.models import (
     TriageRequest, 
@@ -32,8 +38,20 @@ from app.models import (
     LearningAnalytics,
     CaseDetail,
     CorrectionResponse,
-    AdminStats
+    AdminStats,
+    User,
+    Token
 )
+from app.auth import (
+    ACCESS_TOKEN_EXPIRE_MINUTES, 
+    create_access_token, 
+    get_current_active_user, 
+    get_current_doctor,
+    get_current_admin,
+    verify_password,
+    get_password_hash
+)
+from fastapi.security import OAuth2PasswordRequestForm
 from app.config import settings, SPECIALTY_OPTIONS
 
 app = FastAPI(
@@ -68,6 +86,29 @@ async def startup_event():
         initialize_system()
     except Exception as e:
         print(f"⚠️ Startup initialization warning: {e}")
+
+# ============================================================
+# Auth Endpoints
+# ============================================================
+
+@app.post("/token", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = get_user_by_username(form_data.username)
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username, "role": user.role}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/users/me", response_model=User)
+async def read_users_me(current_user: User = Depends(get_current_active_user)):
+    return current_user
 
 # ============================================================
 # Patient Portal Endpoints
@@ -166,10 +207,16 @@ async def assess_symptoms(
 # ============================================================
 
 @app.get("/triage/pending-reviews", response_model=List[CaseDetail])
-async def get_pending_reviews_endpoint():
+async def get_pending_reviews_endpoint(current_user: User = Depends(get_current_doctor)):
     """Get all cases awaiting doctor review"""
     try:
         pending_cases = get_pending_reviews()
+        
+        # Filter for pending or assigned to current user
+        filtered_cases = [
+            c for c in pending_cases 
+            if c.get("status") == "pending" or c.get("assigned_to") == current_user.username
+        ]
         
         result = []
         for case in pending_cases:
@@ -181,7 +228,9 @@ async def get_pending_reviews_endpoint():
                 ai_specialty=case["ai_specialty"],
                 ai_severity=case["ai_severity"],
                 ai_notes=case["ai_notes"],
-                has_image=case.get("input_image") is not None
+                has_image=case.get("input_image") is not None,
+                status=case.get("status", "pending"),
+                assigned_to=case.get("assigned_to")
             ))
         
         return result
@@ -189,7 +238,7 @@ async def get_pending_reviews_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/triage/case/{case_id}")
-async def get_case_detail(case_id: str):
+async def get_case_detail(case_id: str, current_user: User = Depends(get_current_doctor)):
     """Get detailed information about a specific case"""
     try:
         feedback = get_collection("feedback")
@@ -212,7 +261,9 @@ async def get_case_detail(case_id: str):
             "doctor_severity": case.get("doctor_severity"),
             "doctor_notes": case.get("doctor_notes"),
             "feedback_given": case.get("feedback_given", False),
-            "correction_score": case.get("correction_score")
+            "correction_score": case.get("correction_score"),
+            "status": case.get("status", "pending"),
+            "assigned_to": case.get("assigned_to")
         }
         
         return case_dict
@@ -222,7 +273,7 @@ async def get_case_detail(case_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/triage/case/{case_id}/image")
-async def get_case_image(case_id: str):
+async def get_case_image(case_id: str): # Image can be public or protected? Let's keep public for now for simplicity in patient view
     """Get the image associated with a case"""
     try:
         feedback = get_collection("feedback")
@@ -244,8 +295,19 @@ async def get_case_image(case_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/triage/attend/{case_id}")
+async def attend_case(case_id: str, current_user: User = Depends(get_current_doctor)):
+    """Lock a case for the current doctor"""
+    try:
+        assign_case(case_id, current_user.username)
+        return {"status": "success", "message": f"Case {case_id} assigned to {current_user.username}"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/triage/validate", response_model=CorrectionResponse)
-async def validate_assessment(validation: DoctorValidation):
+async def validate_assessment(validation: DoctorValidation, current_user: User = Depends(get_current_doctor)):
     """
     Submit doctor's correction and calculate learning score.
     This trains the AI system.
@@ -275,7 +337,7 @@ async def validate_assessment(validation: DoctorValidation):
 # ============================================================
 
 @app.get("/triage/analytics", response_model=LearningAnalytics)
-async def get_analytics():
+async def get_analytics(current_user: User = Depends(get_current_admin)):
     """Get comprehensive AI learning analytics"""
     try:
         analytics = get_learning_analytics()
@@ -317,7 +379,7 @@ async def get_recent_cases(limit: int = 15):
 # ============================================================
 
 @app.get("/admin/stats", response_model=AdminStats)
-async def get_admin_stats():
+async def get_admin_stats(current_user: User = Depends(get_current_admin)):
     """Get administrative statistics"""
     try:
         prompts_coll = get_collection("prompts")
@@ -340,7 +402,7 @@ async def get_admin_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/admin/clear-cache")
-async def clear_cache_endpoint():
+async def clear_cache_endpoint(current_user: User = Depends(get_current_admin)):
     """Clear pattern cache"""
     try:
         clear_pattern_cache()
@@ -349,7 +411,10 @@ async def clear_cache_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/admin/reset-system")
-async def reset_system(clear_learning_memory: bool = Query(False, description="Also clear learning memory")):
+async def reset_system(
+    clear_learning_memory: bool = Query(False, description="Also clear learning memory"),
+    current_user: User = Depends(get_current_admin)
+):
     """
     Reset system to clean state (Emergency action).
     Use with caution!
@@ -366,7 +431,7 @@ async def reset_system(clear_learning_memory: bool = Query(False, description="A
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/admin/recalculate-scores")
-async def recalculate_scores():
+async def recalculate_scores(current_user: User = Depends(get_current_admin)):
     """Recalculate all correction scores"""
     try:
         count = recalculate_all_scores()
@@ -379,7 +444,7 @@ async def recalculate_scores():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/admin/prompt")
-async def get_prompt():
+async def get_prompt(current_user: User = Depends(get_current_admin)):
     """Get current base prompt"""
     try:
         return {
@@ -390,7 +455,7 @@ async def get_prompt():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/admin/pattern-context")
-async def get_pattern_context_endpoint():
+async def get_pattern_context_endpoint(current_user: User = Depends(get_current_admin)):
     """Get current pattern context"""
     try:
         context = get_pattern_context()
@@ -431,20 +496,11 @@ async def health_check():
 
 @app.get("/")
 async def root():
-    """Root endpoint with API information"""
-    return {
-        "name": "Medical Triage AI API",
-        "version": "1.0.0",
-        "description": "AI-powered medical symptom analysis and triage",
-        "endpoints": {
-            "patient": "/triage/assess",
-            "doctor": "/triage/pending-reviews",
-            "analytics": "/triage/analytics",
-            "admin": "/admin/stats",
-            "health": "/health"
-        },
-        "docs": "/docs"
-    }
+    """Serve the frontend entry point"""
+    return FileResponse("frontend/index.html")
+
+# Mount static files (must be after specific routes to avoid conflicts)
+app.mount("/", StaticFiles(directory="frontend"), name="static")
 
 # ============================================================
 # Run App

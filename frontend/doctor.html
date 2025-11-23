@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doctor Portal - Medical Triage AI</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <header>
+        <nav>
+            <div class="logo">
+                <a href="index.html" style="color: inherit; text-decoration: none;">
+                    <span>🩺</span> Medical Triage AI
+                </a>
+            </div>
+            <div class="nav-links">
+                <span id="doctorName" style="font-weight: 600;">Dr. User</span>
+                <button onclick="logout()" class="btn btn-secondary"
+                    style="padding: 0.5rem 1rem; font-size: 0.9rem;">Logout</button>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container">
+        <div class="grid" style="grid-template-columns: 1fr 2fr; align-items: start;">
+            <!-- Sidebar: Queue -->
+            <div>
+                <h2 class="mb-1">Priority Queue</h2>
+                <div id="queueList">
+                    <div class="text-center p-2">Loading queue...</div>
+                </div>
+            </div>
+
+            <!-- Main: Case Detail -->
+            <div id="caseDetailArea">
+                <div class="card text-center" style="padding: 3rem;">
+                    <h3>Select a case from the queue</h3>
+                    <p style="color: var(--text-light);">Cases are prioritized by severity.</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+    <script>
+        let currentCaseId = null;
+        let currentUser = null;
+
+        async function init() {
+            try {
+                currentUser = await getCurrentUser();
+                document.getElementById('doctorName').textContent = currentUser.full_name || currentUser.username;
+                if (currentUser.role !== 'doctor' && currentUser.role !== 'admin') {
+                    alert("Unauthorized access");
+                    logout();
+                }
+                loadQueue();
+                // Refresh queue every 30 seconds
+                setInterval(loadQueue, 30000);
+            } catch (error) {
+                window.location.href = 'login.html';
+            }
+        }
+
+        async function loadQueue() {
+            try {
+                const cases = await getPendingReviews();
+                const queueList = document.getElementById('queueList');
+                queueList.innerHTML = '';
+
+                if (cases.length === 0) {
+                    queueList.innerHTML = '<div class="card text-center"><p>No pending cases.</p></div>';
+                    return;
+                }
+
+                // Sort by severity (descending)
+                cases.sort((a, b) => b.ai_severity - a.ai_severity);
+
+                cases.forEach(c => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.style.padding = '1rem';
+                    card.style.marginBottom = '1rem';
+                    card.style.cursor = 'pointer';
+                    card.style.borderLeft = `5px solid ${getSeverityColor(c.ai_severity)}`;
+
+                    if (c.assigned_to === currentUser.username) {
+                        card.style.backgroundColor = '#e3f2fd'; // Highlight assigned cases
+                    } else if (c.assigned_to) {
+                        card.style.opacity = '0.6'; // Dim other assigned cases (shouldn't happen with API filter but good safety)
+                    }
+
+                    card.onclick = () => loadCaseDetail(c.case_id);
+
+                    card.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span class="badge" style="background-color: ${getSeverityColor(c.ai_severity)}20; color: ${getSeverityColor(c.ai_severity)}">
+                                Severity ${c.ai_severity}
+                            </span>
+                            <span style="font-size: 0.8rem; color: var(--text-light);">
+                                ${new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                        </div>
+                        <h4 style="margin: 0.5rem 0; font-size: 1.1rem;">${c.ai_specialty}</h4>
+                        <p style="font-size: 0.9rem; color: var(--text-light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            ${c.input_text || "Image only"}
+                        </p>
+                        ${c.assigned_to === currentUser.username ? '<span class="badge" style="background: var(--primary-color); color: white; font-size: 0.7rem;">Assigned to you</span>' : ''}
+                    `;
+                    queueList.appendChild(card);
+                });
+            } catch (error) {
+                console.error("Failed to load queue", error);
+            }
+        }
+
+        function getSeverityColor(severity) {
+            if (severity >= 5) return '#c62828'; // Red
+            if (severity === 4) return '#ef6c00'; // Orange
+            if (severity === 3) return '#f9a825'; // Yellow
+            return '#2e7d32'; // Green
+        }
+
+        async function loadCaseDetail(caseId) {
+            currentCaseId = caseId;
+            const detailArea = document.getElementById('caseDetailArea');
+            detailArea.innerHTML = '<div class="text-center"><div class="spinner"></div></div>';
+
+            try {
+                const c = await getCaseDetail(caseId);
+
+                const isAssignedToMe = c.assigned_to === currentUser.username;
+                const isAssignedToOther = c.assigned_to && !isAssignedToMe;
+
+                let actionButton = '';
+                if (!c.assigned_to) {
+                    actionButton = `<button onclick="attendCurrentCase('${caseId}')" class="btn btn-primary" style="width: 100%;">Attend Case (Lock)</button>`;
+                } else if (isAssignedToMe) {
+                    actionButton = `<div class="badge badge-mild" style="display: block; text-align: center; padding: 1rem;">You are attending this case</div>`;
+                } else {
+                    actionButton = `<div class="badge badge-critical" style="display: block; text-align: center; padding: 1rem;">Locked by ${c.assigned_to}</div>`;
+                }
+
+                detailArea.innerHTML = `
+                    <div class="card">
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <h2>Case Assessment</h2>
+                            <span class="badge" style="background-color: ${getSeverityColor(c.ai_severity)}20; color: ${getSeverityColor(c.ai_severity)}; font-size: 1rem;">
+                                Severity ${c.ai_severity}/5
+                            </span>
+                        </div>
+                        
+                        <div class="mb-1">
+                            <label>Patient ID</label>
+                            <div>${c.patient_id}</div>
+                        </div>
+
+                        <div class="mb-1">
+                            <label>Symptoms</label>
+                            <p style="background: #f9f9f9; padding: 1rem; border-radius: 8px;">${c.input_text || "No text description provided."}</p>
+                        </div>
+
+                        ${c.has_image ? `
+                        <div class="mb-1">
+                            <label>Patient Image</label>
+                            <img src="${API_URL}/triage/case/${caseId}/image" style="max-width: 100%; border-radius: 8px; max-height: 300px; object-fit: contain;">
+                        </div>` : ''}
+
+                        <div class="mb-1" style="border-top: 1px solid #eee; padding-top: 1rem;">
+                            <h3>AI Recommendation</h3>
+                            <div class="grid" style="gap: 1rem;">
+                                <div>
+                                    <label>Specialty</label>
+                                    <div style="font-weight: 600;">${c.ai_specialty}</div>
+                                </div>
+                                <div>
+                                    <label>Notes</label>
+                                    <div>${c.ai_notes}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-1">
+                            ${actionButton}
+                        </div>
+
+                        ${isAssignedToMe ? `
+                        <div class="mt-2" style="border-top: 2px solid #eee; padding-top: 1rem;">
+                            <h3>Doctor Feedback & Validation</h3>
+                            <form id="validationForm">
+                                <div class="grid">
+                                    <div class="form-group">
+                                        <label>Correct Specialty</label>
+                                        <select id="docSpecialty">
+                                            <option value="${c.ai_specialty}">${c.ai_specialty} (AI)</option>
+                                            <option value="General Practitioner">General Practitioner</option>
+                                            <option value="Emergency">Emergency</option>
+                                            <option value="Cardiologist">Cardiologist</option>
+                                            <option value="Orthopedic">Orthopedic</option>
+                                            <option value="Dermatologist">Dermatologist</option>
+                                            <option value="Neurologist">Neurologist</option>
+                                            <!-- Add more as needed -->
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Correct Severity (1-5)</label>
+                                        <input type="number" id="docSeverity" min="1" max="5" value="${c.ai_severity}">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Clinical Notes (Crucial for AI Learning)</label>
+                                    <textarea id="docNotes" rows="4" placeholder="Explain your diagnosis and any corrections..."></textarea>
+                                </div>
+                                <button type="button" onclick="submitFeedback('${caseId}')" class="btn btn-success" style="width: 100%; background-color: var(--success-color); color: white;">Submit & Train AI</button>
+                            </form>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+            } catch (error) {
+                detailArea.innerHTML = `<div class="card text-center"><p style="color: red;">Error loading case: ${error.message}</p></div>`;
+            }
+        }
+
+        async function attendCurrentCase(caseId) {
+            try {
+                await attendCase(caseId);
+                loadCaseDetail(caseId); // Reload to show form
+                loadQueue(); // Refresh queue to show locked status
+            } catch (error) {
+                alert("Failed to attend case: " + error.message);
+            }
+        }
+
+        async function submitFeedback(caseId) {
+            const specialty = document.getElementById('docSpecialty').value;
+            const severity = parseInt(document.getElementById('docSeverity').value);
+            const notes = document.getElementById('docNotes').value;
+
+            if (!notes || notes.length < 10) {
+                alert("Please provide detailed clinical notes (at least 10 chars) to help the AI learn.");
+                return;
+            }
+
+            try {
+                const result = await submitValidation({
+                    case_id: caseId,
+                    correct_specialty: specialty,
+                    correct_severity: severity,
+                    doctor_notes: notes
+                });
+
+                alert(`Feedback submitted! AI Learning Score: ${result.validation_score.toFixed(2)}`);
+                loadQueue(); // Refresh queue
+                document.getElementById('caseDetailArea').innerHTML = `
+                    <div class="card text-center" style="padding: 3rem;">
+                        <h3 style="color: var(--success-color);">Case Completed!</h3>
+                        <p>Thank you for your feedback. The AI has been updated.</p>
+                        <button onclick="loadQueue()" class="btn btn-secondary mt-1">Select Next Case</button>
+                    </div>
+                `;
+            } catch (error) {
+                alert("Error submitting feedback: " + error.message);
+            }
+        }
+
+        init();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Portal - Medical Triage AI</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+</head>
+
+<body>
+    <header>
+        <nav>
+            <div class="logo">
+                <a href="index.html" style="color: inherit; text-decoration: none;">
+                    <span>🩺</span> Medical Triage AI <span class="badge"
+                        style="margin-left: 0.5rem; font-size: 0.7rem; background: #333; color: white;">ADMIN</span>
+                </a>
+            </div>
+            <div class="nav-links">
+                <button onclick="logout()" class="btn btn-secondary"
+                    style="padding: 0.5rem 1rem; font-size: 0.9rem;">Logout</button>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container">
+        <h1 class="mb-2">System Analytics</h1>
+
+        <!-- Stats Cards -->
+        <div class="grid mb-2">
+            <div class="card text-center">
+                <h3>Total Cases</h3>
+                <div id="totalCases" style="font-size: 3rem; font-weight: 700; color: var(--primary-color);">-</div>
+            </div>
+            <div class="card text-center">
+                <h3>Reviewed</h3>
+                <div id="reviewedCases" style="font-size: 3rem; font-weight: 700; color: var(--secondary-color);">-
+                </div>
+            </div>
+            <div class="card text-center">
+                <h3>AI Accuracy</h3>
+                <div id="avgScore" style="font-size: 3rem; font-weight: 700; color: var(--success-color);">-</div>
+                <p style="font-size: 0.8rem; color: var(--text-light);">Avg. Correction Score</p>
+            </div>
+            <div class="card text-center">
+                <h3>Learned Lessons</h3>
+                <div id="totalLessons" style="font-size: 3rem; font-weight: 700; color: var(--warning-color);">-</div>
+            </div>
+        </div>
+
+        <div class="grid" style="grid-template-columns: 1fr 1fr;">
+            <!-- Improvement Trend -->
+            <div class="card">
+                <h3>AI Improvement Trend</h3>
+                <div id="trendChart" style="width: 100%; height: 300px;"></div>
+            </div>
+
+            <!-- Correction Patterns -->
+            <div class="card">
+                <h3>Common Corrections</h3>
+                <div id="patternsList" style="max-height: 300px; overflow-y: auto;">
+                    <p>Loading patterns...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-2">
+            <h3>System Management</h3>
+            <div style="display: flex; gap: 1rem;">
+                <button onclick="alert('Not implemented in this demo')" class="btn btn-secondary">Clear Cache</button>
+                <button onclick="alert('Not implemented in this demo')" class="btn btn-danger">Reset System</button>
+            </div>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+    <script>
+        async function init() {
+            try {
+                const user = await getCurrentUser();
+                if (user.role !== 'admin') {
+                    alert("Unauthorized access");
+                    logout();
+                }
+
+                loadAnalytics();
+                loadStats();
+            } catch (error) {
+                window.location.href = 'login.html';
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const stats = await getAdminStats();
+                document.getElementById('totalCases').textContent = stats.total_cases;
+                document.getElementById('reviewedCases').textContent = stats.reviewed_cases;
+                document.getElementById('totalLessons').textContent = stats.total_lessons;
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function loadAnalytics() {
+            try {
+                const data = await getAnalytics();
+
+                document.getElementById('avgScore').textContent = (data.avg_correction_score * 100).toFixed(1) + '%';
+
+                // Trend Chart
+                if (data.improvement_trend && data.improvement_trend.length > 0) {
+                    const dates = data.improvement_trend.map(d => d.date);
+                    const scores = data.improvement_trend.map(d => d.score);
+
+                    Plotly.newPlot('trendChart', [{
+                        x: dates,
+                        y: scores,
+                        type: 'scatter',
+                        mode: 'lines+markers',
+                        line: { color: '#006994' }
+                    }], {
+                        margin: { t: 10, r: 10, l: 30, b: 30 },
+                        yaxis: { range: [0, 1.1] }
+                    });
+                }
+
+                // Patterns
+                const patternsDiv = document.getElementById('patternsList');
+                patternsDiv.innerHTML = '';
+
+                if (Object.keys(data.correction_patterns).length === 0) {
+                    patternsDiv.innerHTML = '<p>No significant patterns detected yet.</p>';
+                } else {
+                    for (const [aiSpec, corrections] of Object.entries(data.correction_patterns)) {
+                        for (const [docSpec, count] of Object.entries(corrections)) {
+                            const item = document.createElement('div');
+                            item.style.padding = '0.5rem';
+                            item.style.borderBottom = '1px solid #eee';
+                            item.innerHTML = `
+                                <strong>${aiSpec}</strong> → <span style="color: var(--primary-color); font-weight: bold;">${docSpec}</span>
+                                <span class="badge" style="float: right;">${count} times</span>
+                            `;
+                            patternsDiv.appendChild(item);
+                        }
+                    }
+                }
+
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        init();
+    </script>
+</body>
+
+</html>

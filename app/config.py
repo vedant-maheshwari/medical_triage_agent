@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     
     # Application
     debug: bool = os.getenv("DEBUG", "false").lower() == "true"
+    secret_key: str = os.getenv("SECRET_KEY", "supersecretkey123")
     
     class Config:
         env_file = ".env"

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Portal - Medical Triage AI</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <header>
+        <nav>
+            <div class="logo">
+                <a href="index.html" style="color: inherit; text-decoration: none;">
+                    <span>🩺</span> Medical Triage AI
+                </a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container">
+        <div style="max-width: 800px; margin: 0 auto;">
+            <h1 class="text-center">Symptom Assessment</h1>
+            <p class="text-center mb-1">Describe your symptoms or upload an image for AI analysis.</p>
+
+            <div class="card" id="inputSection">
+                <form id="triageForm">
+                    <div class="form-group">
+                        <label for="description">Describe your symptoms</label>
+                        <textarea id="description" rows="5"
+                            placeholder="E.g., Sharp pain in left arm, started 2 hours ago..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="image">Upload Image (Optional)</label>
+                        <input type="file" id="image" accept="image/*">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Get Assessment</button>
+                </form>
+            </div>
+
+            <div id="loadingSection" style="display: none; text-align: center; padding: 2rem;">
+                <div class="spinner"></div>
+                <p class="mt-1">Analyzing symptoms...</p>
+            </div>
+
+            <div id="resultSection" style="display: none;">
+                <div class="card" style="border-left: 5px solid var(--primary-color);">
+                    <h2 id="resultTitle">Assessment Result</h2>
+
+                    <div class="grid" style="margin-bottom: 1.5rem;">
+                        <div>
+                            <label>Recommended Specialist</label>
+                            <div id="resultSpecialty" style="font-size: 1.2rem; font-weight: 600;"></div>
+                        </div>
+                        <div>
+                            <label>Severity Level</label>
+                            <div id="resultSeverity" style="font-size: 1.2rem; font-weight: 600;"></div>
+                        </div>
+                        <div>
+                            <label>Priority</label>
+                            <span id="resultPriority" class="badge"></span>
+                        </div>
+                    </div>
+
+                    <div class="mb-1">
+                        <label>Clinical Notes</label>
+                        <p id="resultNotes" style="background: #f9f9f9; padding: 1rem; border-radius: 8px;"></p>
+                    </div>
+
+                    <div class="mb-1">
+                        <label>Recommended Action</label>
+                        <div id="resultAction" style="font-weight: 600; color: var(--primary-color);"></div>
+                    </div>
+
+                    <div class="mt-1"
+                        style="font-size: 0.9rem; color: var(--text-light); border-top: 1px solid #eee; padding-top: 1rem;">
+                        <p>💡 This is an AI-generated assessment. A doctor has been notified and will review your case
+                            shortly.</p>
+                    </div>
+
+                    <button onclick="location.reload()" class="btn btn-secondary mt-1">Start New Assessment</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+    <script>
+        document.getElementById('triageForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const description = document.getElementById('description').value;
+            const imageFile = document.getElementById('image').files[0];
+
+            if (!description && !imageFile) {
+                alert("Please provide a description or an image.");
+                return;
+            }
+
+            document.getElementById('inputSection').style.display = 'none';
+            document.getElementById('loadingSection').style.display = 'block';
+
+            try {
+                const result = await submitTriage(description, imageFile);
+
+                document.getElementById('resultSpecialty').textContent = result.specialty;
+                document.getElementById('resultSeverity').textContent = `${result.severity}/5`;
+
+                const priorityBadge = document.getElementById('resultPriority');
+                priorityBadge.textContent = result.priority;
+
+                // Set badge color
+                if (result.severity >= 5) priorityBadge.className = 'badge badge-critical';
+                else if (result.severity === 4) priorityBadge.className = 'badge badge-urgent';
+                else if (result.severity === 3) priorityBadge.className = 'badge badge-moderate';
+                else priorityBadge.className = 'badge badge-mild';
+
+                document.getElementById('resultNotes').textContent = result.notes;
+                document.getElementById('resultAction').textContent = result.recommended_action;
+
+                document.getElementById('loadingSection').style.display = 'none';
+                document.getElementById('resultSection').style.display = 'block';
+
+            } catch (error) {
+                alert("Error: " + error.message);
+                document.getElementById('loadingSection').style.display = 'none';
+                document.getElementById('inputSection').style.display = 'block';
+            }
+        });
+    </script>
+</body>
+
+</html>
