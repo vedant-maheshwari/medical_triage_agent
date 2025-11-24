@@ -8,7 +8,6 @@ services:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
-      - mongodb_config:/data/configdb
     environment:
       MONGO_INITDB_DATABASE: wound_triage
     healthcheck:
@@ -30,7 +29,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
       - ./app:/app/app  # For development
+      - ./frontend:/app/frontend # For frontend development
 
 volumes:
   mongodb_data:
-  mongodb_config:

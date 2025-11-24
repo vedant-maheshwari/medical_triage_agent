@@ -1120,19 +1120,29 @@ def initialize_system():
     # Run RAG verification
     # verify_rag_system()
 
-def analyze_triage(text: str, image_data: Optional[str] = None) -> Triage:
+def analyze_triage(text: str, image_data: Optional[str] = None, language: str = "en") -> Triage:
     """
     Main triage analysis function.
     Combines:
     1. Base medical knowledge (Prompt)
     2. Learned lessons (RAG)
     3. Multi-modal input (Text + Image)
+    4. Language support (English/Hindi)
     """
     # 1. Retrieve relevant lessons
     relevant_lessons = get_relevant_lessons(text)
     
-    # 2. Construct dynamic prompt
+    # 2. Construct dynamic prompt with language instruction
     system_prompt = _construct_system_prompt(relevant_lessons)
+    
+    # Add language-specific instruction
+    language_instruction = ""
+    if language == "hi":
+        language_instruction = "\n\nIMPORTANT: The patient has communicated in Hindi. You MUST respond in Hindi (Devanagari script) while maintaining all medical accuracy. Translate specialty names and clinical notes to Hindi."
+    elif language == "en":
+        language_instruction = "\n\nRespond in English as specified."
+    
+    system_prompt += language_instruction
     
     # 3. Call LLM
     llm = ChatOpenAI(

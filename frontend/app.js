@@ -76,8 +76,8 @@ async function apiCall(endpoint, method = "GET", body = null, auth = false) {
 
 async function login(username, password) {
     const formData = new FormData();
-    formData.append("username", username);
-    formData.append("password", password);
+    formData.append("username", username.trim());
+    formData.append("password", password.trim());
 
     const response = await fetch(`${API_URL}/token`, {
         method: "POST",
@@ -97,10 +97,11 @@ async function getCurrentUser() {
     return apiCall("/users/me", "GET", null, true);
 }
 
-async function submitTriage(description, imageFile) {
+async function submitTriage(description, imageFile, language = 'en') {
     const formData = new FormData();
     if (description) formData.append("description", description);
     if (imageFile) formData.append("image", imageFile);
+    formData.append("language", language);
 
     return apiCall("/triage/assess", "POST", formData);
 }

@@ -101,6 +101,7 @@ async def startup_event():
 
 @app.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    print(f"🔐 LOGIN ATTEMPT: username='{form_data.username}', password_len={len(form_data.password)}")
     user = get_user_by_username(form_data.username)
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
@@ -126,7 +127,8 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
 async def assess_symptoms(
     description: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None),
-    patient_id: Optional[str] = Form(None)
+    patient_id: Optional[str] = Form(None),
+    language: Optional[str] = Form("en")
 ):
     """
     Analyze patient symptoms and return triage recommendation.
@@ -146,9 +148,8 @@ async def assess_symptoms(
             image_bytes = await image.read()
             image_b64 = base64.b64encode(image_bytes).decode()
         
-        # Analyze with AI
-        agent = get_agent()
-        result = await agent.analyze(description, image_b64)
+        # Analyze with AI (pass language for multilingual support)
+        result = analyze_triage(description, image_b64, language)
         
         # Generate patient ID if not provided
         if not patient_id:
@@ -191,7 +192,8 @@ async def assess_symptoms(
             confidence=0.8,  # Can be enhanced later
             urgency_minutes=urgency_minutes,
             recommended_action=recommended_action,
-            priority=severity_color.get(result.severity, "Unknown")
+            priority=severity_color.get(result.severity, "Unknown"),
+            detected_language=language
         )
     except HTTPException:
         raise

@@ -30,6 +30,7 @@ class TokenData(BaseModel):
 class TriageRequest(BaseModel):
     description: Optional[str] = Field(None, min_length=1, max_length=1000)
     patient_id: Optional[str] = Field(None, description="Optional patient ID")
+    language: Optional[str] = Field("en", description="Patient's preferred language (en/hi)")
     
     @validator('description')
     def validate_description(cls, v):
@@ -46,9 +47,8 @@ class TriageResponse(BaseModel):
     urgency_minutes: int
     recommended_action: str
     priority: str
-    recommended_action: str
-    priority: str
     clinical_status: str = "pending"
+    detected_language: Optional[str] = "en"
 
 class DoctorValidation(BaseModel):
     case_id: str

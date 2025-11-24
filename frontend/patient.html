@@ -6,7 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Patient Portal - Medical Triage AI</title>
     <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
 </head>
 
 <body>
@@ -14,23 +16,30 @@
         <nav>
             <div class="logo">
                 <a href="index.html" style="color: inherit; text-decoration: none;">
-                    <span>🩺</span> Medical Triage AI
+                    <span>🩺</span> <span data-i18n="appName">Medical Triage AI</span>
                 </a>
+            </div>
+            <div>
+                <button id="langToggle" class="btn btn-secondary" onclick="toggleLanguage()"
+                    style="padding: 0.5rem 1rem;" title="Language">
+                    🌐 EN
+                </button>
             </div>
         </nav>
     </header>
 
     <main class="container">
         <div style="max-width: 800px; margin: 0 auto;">
-            <h1 class="text-center">Symptom Assessment</h1>
-            <p class="text-center mb-1">Describe your symptoms or upload an image for AI analysis.</p>
+            <h1 class="text-center" data-i18n="pageTitle">Symptom Assessment</h1>
+            <p class="text-center mb-1" data-i18n="pageSubtitle">Describe your symptoms or upload an image for AI
+                analysis.</p>
 
             <div class="card" id="inputSection">
                 <form id="triageForm">
                     <div class="form-group">
-                        <label for="description">Describe your symptoms</label>
+                        <label for="description" data-i18n="describeSymptoms">Describe your symptoms</label>
                         <div style="position: relative;">
-                            <textarea id="description" rows="5"
+                            <textarea id="description" rows="5" data-i18n="symptomPlaceholder"
                                 placeholder="E.g., Sharp pain in left arm, started 2 hours ago..."></textarea>
                             <button type="button" id="micBtn" class="btn btn-secondary"
                                 style="position: absolute; bottom: 10px; right: 10px; border-radius: 50%; width: 40px; height: 40px; padding: 0; display: flex; align-items: center; justify-content: center;"
@@ -44,60 +53,63 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="image">Upload Image (Optional)</label>
+                        <label for="image" data-i18n="uploadImage">Upload Image (Optional)</label>
                         <input type="file" id="image" accept="image/*">
                     </div>
 
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">Get Assessment</button>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;" data-i18n="getAssessment">Get
+                        Assessment</button>
                 </form>
             </div>
 
             <div id="loadingSection" style="display: none; text-align: center; padding: 2rem;">
                 <div class="spinner"></div>
-                <p class="mt-1">Analyzing symptoms...</p>
+                <p class="mt-1" data-i18n="analyzingSymptoms">Analyzing symptoms...</p>
             </div>
 
             <div id="resultSection" style="display: none;">
                 <div class="card" style="border-left: 5px solid var(--primary-color);">
-                    <h2 id="resultTitle">Assessment Result</h2>
+                    <h2 id="resultTitle" data-i18n="assessmentResult">Assessment Result</h2>
 
                     <div class="grid" style="margin-bottom: 1.5rem;">
                         <div>
-                            <label>Recommended Specialist</label>
+                            <label data-i18n="recommendedSpecialist">Recommended Specialist</label>
                             <div id="resultSpecialty" style="font-size: 1.2rem; font-weight: 600;"></div>
                         </div>
                         <div>
-                            <label>Severity Level</label>
+                            <label data-i18n="severityLevel">Severity Level</label>
                             <div id="resultSeverity" style="font-size: 1.2rem; font-weight: 600;"></div>
                         </div>
                         <div>
-                            <label>Priority</label>
+                            <label data-i18n="priority">Priority</label>
                             <span id="resultPriority" class="badge"></span>
                         </div>
                     </div>
 
                     <div class="mb-1">
-                        <label>Clinical Notes</label>
+                        <label data-i18n="clinicalNotes">Clinical Notes</label>
                         <p id="resultNotes" style="background: #f9f9f9; padding: 1rem; border-radius: 8px;"></p>
                     </div>
 
                     <div class="mb-1">
-                        <label>Recommended Action</label>
+                        <label data-i18n="recommendedAction">Recommended Action</label>
                         <div id="resultAction" style="font-weight: 600; color: var(--primary-color);"></div>
                     </div>
 
                     <div class="mt-1"
                         style="font-size: 0.9rem; color: var(--text-light); border-top: 1px solid #eee; padding-top: 1rem;">
-                        <p>💡 This is an AI-generated assessment. A doctor has been notified and will review your case
-                            shortly.</p>
+                        <p data-i18n="aiDisclaimer">💡 This is an AI-generated assessment. A doctor has been notified
+                            and will review your case shortly.</p>
                     </div>
 
-                    <button onclick="location.reload()" class="btn btn-secondary mt-1">Start New Assessment</button>
+                    <button onclick="location.reload()" class="btn btn-secondary mt-1"
+                        data-i18n="startNewAssessment">Start New Assessment</button>
                 </div>
             </div>
         </div>
     </main>
 
+    <script src="translations.js"></script>
     <script src="app.js"></script>
     <script>
         // Voice Input Logic
@@ -111,7 +123,8 @@
 
             recognition.continuous = false;
             recognition.interimResults = false;
-            recognition.lang = 'en-US'; // Could be dynamic based on user preference
+            recognition.lang = currentLanguage === 'hi' ? 'hi-IN' : 'en-IN';
+            window.recognition = recognition; // Store globally for language updates
 
             micBtn.onclick = () => {
                 if (micStatus.style.display === 'block') {
@@ -123,7 +136,7 @@
 
             recognition.onstart = () => {
                 micStatus.style.display = 'block';
-                micStatus.textContent = "Listening...";
+                micStatus.textContent = t('listening');
                 micBtn.style.backgroundColor = "#ffcdd2"; // Light red
             };
 
@@ -140,7 +153,7 @@
 
             recognition.onerror = (event) => {
                 console.error("Speech recognition error", event.error);
-                micStatus.textContent = "Error: " + event.error;
+                micStatus.textContent = t('voiceError') + ": " + event.error;
                 setTimeout(() => { micStatus.style.display = 'none'; }, 2000);
             };
         } else {
@@ -155,7 +168,7 @@
             const imageFile = document.getElementById('image').files[0];
 
             if (!description && !imageFile) {
-                alert("Please provide a description or an image.");
+                alert(t('provideInput'));
                 return;
             }
 
@@ -163,7 +176,7 @@
             document.getElementById('loadingSection').style.display = 'block';
 
             try {
-                const result = await submitTriage(description, imageFile);
+                const result = await submitTriage(description, imageFile, currentLanguage);
 
                 document.getElementById('resultSpecialty').textContent = result.specialty;
                 document.getElementById('resultSeverity').textContent = `${result.severity}/5`;
@@ -184,11 +197,14 @@
                 document.getElementById('resultSection').style.display = 'block';
 
             } catch (error) {
-                alert("Error: " + error.message);
+                alert(t('errorPrefix') + error.message);
                 document.getElementById('loadingSection').style.display = 'none';
                 document.getElementById('inputSection').style.display = 'block';
             }
         });
+
+        // Initialize language on page load
+        initializeLanguage();
     </script>
 </body>
 

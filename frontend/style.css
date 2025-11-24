@@ -1,8 +1,12 @@
 :root {
-    --primary-color: #006994; /* Ocean Blue */
-    --secondary-color: #00a8cc; /* Lighter Ocean Blue */
-    --accent-color: #4db6ac; /* Teal/Seafoam */
-    --background-color: #f0f8ff; /* Alice Blue (Very light blue) */
+    --primary-color: #006994;
+    /* Ocean Blue */
+    --secondary-color: #00a8cc;
+    /* Lighter Ocean Blue */
+    --accent-color: #4db6ac;
+    /* Teal/Seafoam */
+    --background-color: #f0f8ff;
+    /* Alice Blue (Very light blue) */
     --card-background: #ffffff;
     --text-color: #333333;
     --text-light: #666666;
@@ -21,27 +25,43 @@
 }
 
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Inter', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background-color: var(--background-color);
     color: var(--text-color);
-    line-height: 1.6;
+    line-height: 1.7;
+    /* Slightly increased for better Devanagari readability */
     min-height: 100vh;
     display: flex;
     flex-direction: column;
 }
 
 /* Typography */
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
     color: var(--primary-color);
     margin-bottom: 1rem;
     font-weight: 600;
 }
 
-h1 { font-size: 2.5rem; }
-h2 { font-size: 2rem; }
-h3 { font-size: 1.5rem; }
+h1 {
+    font-size: 2.5rem;
+}
 
-p { margin-bottom: 1rem; }
+h2 {
+    font-size: 2rem;
+}
+
+h3 {
+    font-size: 1.5rem;
+}
+
+p {
+    margin-bottom: 1rem;
+}
 
 a {
     color: var(--secondary-color);
@@ -49,7 +69,9 @@ a {
     transition: var(--transition);
 }
 
-a:hover { color: var(--primary-color); }
+a:hover {
+    color: var(--primary-color);
+}
 
 /* Layout */
 .container {
@@ -168,17 +190,31 @@ select {
     transition: var(--transition);
 }
 
-input:focus, textarea:focus, select:focus {
+input:focus,
+textarea:focus,
+select:focus {
     outline: none;
     border-color: var(--secondary-color);
     box-shadow: 0 0 0 3px rgba(0, 168, 204, 0.2);
 }
 
 /* Utilities */
-.text-center { text-align: center; }
-.mt-1 { margin-top: 1rem; }
-.mt-2 { margin-top: 2rem; }
-.mb-1 { margin-bottom: 1rem; }
+.text-center {
+    text-align: center;
+}
+
+.mt-1 {
+    margin-top: 1rem;
+}
+
+.mt-2 {
+    margin-top: 2rem;
+}
+
+.mb-1 {
+    margin-bottom: 1rem;
+}
+
 .flex-center {
     display: flex;
     justify-content: center;
@@ -200,10 +236,25 @@ input:focus, textarea:focus, select:focus {
     font-weight: 600;
 }
 
-.badge-critical { background-color: #ffebee; color: #c62828; }
-.badge-urgent { background-color: #fff3e0; color: #ef6c00; }
-.badge-moderate { background-color: #fff8e1; color: #f9a825; }
-.badge-mild { background-color: #e8f5e9; color: #2e7d32; }
+.badge-critical {
+    background-color: #ffebee;
+    color: #c62828;
+}
+
+.badge-urgent {
+    background-color: #fff3e0;
+    color: #ef6c00;
+}
+
+.badge-moderate {
+    background-color: #fff8e1;
+    color: #f9a825;
+}
+
+.badge-mild {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+}
 
 /* Loading Spinner */
 .spinner {
@@ -217,13 +268,28 @@ input:focus, textarea:focus, select:focus {
 }
 
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
 }
 
 /* Responsive */
 @media (max-width: 768px) {
-    h1 { font-size: 2rem; }
-    .container { padding: 1rem; }
-    .nav-links { display: none; } /* Simple mobile menu for now */
+    h1 {
+        font-size: 2rem;
+    }
+
+    .container {
+        padding: 1rem;
+    }
+
+    .nav-links {
+        display: none;
+    }
+
+    /* Simple mobile menu for now */
 }
