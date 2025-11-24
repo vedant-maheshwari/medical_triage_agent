@@ -8,6 +8,30 @@
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        .tab-btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-weight: 600;
+            color: var(--text-light);
+            border-bottom: 2px solid transparent;
+        }
+
+        .tab-btn.active {
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--primary-color);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+    </style>
 </head>
 
 <body>
@@ -27,53 +51,121 @@
     </header>
 
     <main class="container">
-        <h1 class="mb-2">System Analytics</h1>
+        <div style="display: flex; gap: 1rem; border-bottom: 1px solid #eee; margin-bottom: 1rem;">
+            <button class="tab-btn active" onclick="switchTab('dashboard')">Dashboard</button>
+            <button class="tab-btn" onclick="switchTab('training')">AI Training Queue</button>
+            <button class="tab-btn" onclick="switchTab('prompt')">Prompt Inspector</button>
+        </div>
 
-        <!-- Stats Cards -->
-        <div class="grid mb-2">
-            <div class="card text-center">
-                <h3>Total Cases</h3>
-                <div id="totalCases" style="font-size: 3rem; font-weight: 700; color: var(--primary-color);">-</div>
-            </div>
-            <div class="card text-center">
-                <h3>Reviewed</h3>
-                <div id="reviewedCases" style="font-size: 3rem; font-weight: 700; color: var(--secondary-color);">-
+        <!-- DASHBOARD TAB -->
+        <div id="dashboard" class="tab-content active">
+            <h1 class="mb-2">System Analytics</h1>
+
+            <div class="grid mb-2">
+                <div class="card text-center">
+                    <h3>Total Cases</h3>
+                    <div id="totalCases" style="font-size: 3rem; font-weight: 700; color: var(--primary-color);">-</div>
+                </div>
+                <div class="card text-center">
+                    <h3>Reviewed</h3>
+                    <div id="reviewedCases" style="font-size: 3rem; font-weight: 700; color: var(--secondary-color);">-
+                    </div>
+                </div>
+                <div class="card text-center">
+                    <h3>AI Accuracy</h3>
+                    <div id="avgScore" style="font-size: 3rem; font-weight: 700; color: var(--success-color);">-</div>
+                    <p style="font-size: 0.8rem; color: var(--text-light);">Avg. Correction Score</p>
+                </div>
+                <div class="card text-center">
+                    <h3>Learned Lessons</h3>
+                    <div id="totalLessons" style="font-size: 3rem; font-weight: 700; color: var(--warning-color);">-
+                    </div>
                 </div>
             </div>
-            <div class="card text-center">
-                <h3>AI Accuracy</h3>
-                <div id="avgScore" style="font-size: 3rem; font-weight: 700; color: var(--success-color);">-</div>
-                <p style="font-size: 0.8rem; color: var(--text-light);">Avg. Correction Score</p>
-            </div>
-            <div class="card text-center">
-                <h3>Learned Lessons</h3>
-                <div id="totalLessons" style="font-size: 3rem; font-weight: 700; color: var(--warning-color);">-</div>
-            </div>
-        </div>
 
-        <div class="grid" style="grid-template-columns: 1fr 1fr;">
-            <!-- Improvement Trend -->
-            <div class="card">
-                <h3>AI Improvement Trend</h3>
-                <div id="trendChart" style="width: 100%; height: 300px;"></div>
-            </div>
-
-            <!-- Correction Patterns -->
-            <div class="card">
-                <h3>Common Corrections</h3>
-                <div id="patternsList" style="max-height: 300px; overflow-y: auto;">
-                    <p>Loading patterns...</p>
+            <div class="grid" style="grid-template-columns: 1fr 1fr;">
+                <div class="card">
+                    <h3>AI Improvement Trend</h3>
+                    <div id="trendChart" style="width: 100%; height: 300px;"></div>
+                </div>
+                <div class="card">
+                    <h3>Common Corrections</h3>
+                    <div id="patternsList" style="max-height: 300px; overflow-y: auto;">
+                        <p>Loading patterns...</p>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="card mt-2">
-            <h3>System Management</h3>
-            <div style="display: flex; gap: 1rem;">
-                <button onclick="alert('Not implemented in this demo')" class="btn btn-secondary">Clear Cache</button>
-                <button onclick="alert('Not implemented in this demo')" class="btn btn-danger">Reset System</button>
+        <!-- TRAINING QUEUE TAB -->
+        <div id="training" class="tab-content">
+            <h1 class="mb-2">AI Training Queue</h1>
+            <div class="card">
+                <p style="color: var(--text-light); margin-bottom: 1rem;">Review recent cases. Provide detailed feedback
+                    to train the AI.</p>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f9f9f9; text-align: left;">
+                                <th style="padding: 1rem;">ID</th>
+                                <th style="padding: 1rem;">AI Spec</th>
+                                <th style="padding: 1rem;">Doc Spec</th>
+                                <th style="padding: 1rem;">Score</th>
+                                <th style="padding: 1rem;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recentCasesTable">
+                            <tr>
+                                <td colspan="5" class="text-center p-2">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
+
+        <!-- PROMPT INSPECTOR TAB -->
+        <div id="prompt" class="tab-content">
+            <h1 class="mb-2">Prompt Inspector</h1>
+            <div class="grid" style="grid-template-columns: 1fr 1fr;">
+                <div class="card">
+                    <h3>Test Input</h3>
+                    <div class="form-group">
+                        <label>Simulate Patient Complaint</label>
+                        <textarea id="testComplaint" rows="4"
+                            placeholder="Enter a complaint to see how the prompt changes..."></textarea>
+                    </div>
+                    <button onclick="inspectPrompt()" class="btn btn-primary">Generate Prompt Preview</button>
+
+                    <div class="mt-2">
+                        <h4>Retrieved Context (RAG)</h4>
+                        <div id="ragContext"
+                            style="background: #f9f9f9; padding: 1rem; border-radius: 8px; font-size: 0.9rem; min-height: 100px;">
+                            No context retrieved yet.
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>System Prompt Preview</h3>
+                    <pre id="promptPreview"
+                        style="white-space: pre-wrap; background: #333; color: #fff; padding: 1rem; border-radius: 8px; font-family: monospace; font-size: 0.8rem; max-height: 600px; overflow-y: auto;">
+Run a test to see the prompt.
+                    </pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- REVIEW MODAL -->
+        <div id="reviewModal"
+            style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
+            <div class="card" style="margin: 2rem auto; max-width: 800px; position: relative;">
+                <button onclick="closeReviewModal()"
+                    style="position: absolute; top: 1rem; right: 1rem; background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
+                <h2 class="mb-1">Detailed Case Review</h2>
+                <div id="reviewContent">Loading...</div>
+            </div>
+        </div>
+
     </main>
 
     <script src="app.js"></script>
@@ -88,9 +180,18 @@
 
                 loadAnalytics();
                 loadStats();
+                loadRecentCases();
             } catch (error) {
                 window.location.href = 'login.html';
             }
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+            document.getElementById(tabId).classList.add('active');
+            document.querySelector(`button[onclick="switchTab('${tabId}')"]`).classList.add('active');
         }
 
         async function loadStats() {
@@ -99,38 +200,22 @@
                 document.getElementById('totalCases').textContent = stats.total_cases;
                 document.getElementById('reviewedCases').textContent = stats.reviewed_cases;
                 document.getElementById('totalLessons').textContent = stats.total_lessons;
-            } catch (e) {
-                console.error(e);
-            }
+            } catch (e) { console.error(e); }
         }
 
         async function loadAnalytics() {
             try {
                 const data = await getAnalytics();
-
                 document.getElementById('avgScore').textContent = (data.avg_correction_score * 100).toFixed(1) + '%';
 
-                // Trend Chart
                 if (data.improvement_trend && data.improvement_trend.length > 0) {
                     const dates = data.improvement_trend.map(d => d.date);
                     const scores = data.improvement_trend.map(d => d.score);
-
-                    Plotly.newPlot('trendChart', [{
-                        x: dates,
-                        y: scores,
-                        type: 'scatter',
-                        mode: 'lines+markers',
-                        line: { color: '#006994' }
-                    }], {
-                        margin: { t: 10, r: 10, l: 30, b: 30 },
-                        yaxis: { range: [0, 1.1] }
-                    });
+                    Plotly.newPlot('trendChart', [{ x: dates, y: scores, type: 'scatter', mode: 'lines+markers', line: { color: '#006994' } }], { margin: { t: 10, r: 10, l: 30, b: 30 }, yaxis: { range: [0, 1.1] } });
                 }
 
-                // Patterns
                 const patternsDiv = document.getElementById('patternsList');
                 patternsDiv.innerHTML = '';
-
                 if (Object.keys(data.correction_patterns).length === 0) {
                     patternsDiv.innerHTML = '<p>No significant patterns detected yet.</p>';
                 } else {
@@ -139,17 +224,179 @@
                             const item = document.createElement('div');
                             item.style.padding = '0.5rem';
                             item.style.borderBottom = '1px solid #eee';
-                            item.innerHTML = `
-                                <strong>${aiSpec}</strong> → <span style="color: var(--primary-color); font-weight: bold;">${docSpec}</span>
-                                <span class="badge" style="float: right;">${count} times</span>
-                            `;
+                            item.innerHTML = `<strong>${aiSpec}</strong> → <span style="color: var(--primary-color); font-weight: bold;">${docSpec}</span> <span class="badge" style="float: right;">${count} times</span>`;
                             patternsDiv.appendChild(item);
                         }
                     }
                 }
+            } catch (e) { console.error(e); }
+        }
 
-            } catch (e) {
-                console.error(e);
+        async function loadRecentCases() {
+            try {
+                const cases = await apiCall("/triage/recent-cases", "GET", null, true);
+                const tbody = document.getElementById('recentCasesTable');
+                tbody.innerHTML = '';
+
+                if (cases.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center p-2">No recent reviews found.</td></tr>';
+                    return;
+                }
+
+                cases.forEach(c => {
+                    const row = document.createElement('tr');
+                    row.style.borderBottom = '1px solid #eee';
+                    row.innerHTML = `
+                        <td style="padding: 1rem;">${c.case_id}</td>
+                        <td style="padding: 1rem;">${c.ai_specialty}</td>
+                        <td style="padding: 1rem;">${c.doctor_specialty}</td>
+                        <td style="padding: 1rem;">${(c.correction_score * 100).toFixed(0)}%</td>
+                        <td style="padding: 1rem;">
+                            <button onclick="openReviewModal('${c.case_id}')" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Review</button>
+                            <button onclick="deleteCase('${c.case_id}')" class="btn" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; background-color: #dc3545; color: white; margin-left: 0.5rem;">Delete</button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (e) { console.error("Failed to load recent cases", e); }
+        }
+
+        async function inspectPrompt() {
+            const text = document.getElementById('testComplaint').value;
+            if (!text) return;
+
+            document.getElementById('promptPreview').textContent = "Generating...";
+            document.getElementById('ragContext').textContent = "Retrieving...";
+
+            try {
+                const result = await previewPrompt(text);
+                document.getElementById('promptPreview').textContent = result.system_prompt;
+
+                const contextDiv = document.getElementById('ragContext');
+                if (result.relevant_lessons.length === 0) {
+                    contextDiv.innerHTML = "No relevant past lessons found.";
+                } else {
+                    contextDiv.innerHTML = result.relevant_lessons.map((l, i) => `
+                        <div style="margin-bottom: 0.5rem; border-left: 3px solid var(--primary-color); padding-left: 0.5rem;">
+                            <strong>Case ${i + 1}</strong>: ${(l.complaint_text || l.complaint || "").substring(0, 50)}...<br>
+                            <span style="font-size: 0.8rem; color: var(--text-light);">Correct: ${l.doctor_specialty || l.specialty}</span>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                document.getElementById('promptPreview').textContent = "Error: " + error.message;
+            }
+        }
+
+        async function openReviewModal(caseId) {
+            document.getElementById('reviewModal').style.display = 'block';
+            const content = document.getElementById('reviewContent');
+            content.innerHTML = '<div class="spinner"></div>';
+
+            try {
+                const c = await getCaseDetail(caseId);
+                content.innerHTML = `
+                    <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div>
+                            <h3>Patient Input</h3>
+                            <p style="background: #f9f9f9; padding: 1rem;">${c.input_text || "Image only"}</p>
+                            ${c.has_image ? `<img src="${API_URL}/triage/case/${caseId}/image" style="max-width: 100%; max-height: 200px;">` : ''}
+                        </div>
+                        <div>
+                            <h3>AI Assessment</h3>
+                            <p><strong>Specialty:</strong> ${c.ai_specialty}</p>
+                            <p><strong>Severity:</strong> ${c.ai_severity}</p>
+                            <p><strong>Notes:</strong> ${c.ai_notes}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-2" style="border-top: 1px solid #eee; padding-top: 1rem;">
+                        <h3>Doctor's Treatment</h3>
+                        <p><strong>Specialty:</strong> ${c.doctor_specialty || "Not set"}</p>
+                        <p><strong>Notes:</strong> ${c.doctor_notes || "None"}</p>
+                    </div>
+
+                    <div class="mt-2" style="background: #e3f2fd; padding: 1rem; border-radius: 8px;">
+                        <h3>Admin Correction (Train AI)</h3>
+                        <div class="grid">
+                            <div class="form-group">
+                                <label>Correct Specialty</label>
+                                <select id="adminSpecialty">
+                                    <option value="${c.ai_specialty}">${c.ai_specialty} (AI)</option>
+                                    <option value="${c.doctor_specialty}" selected>${c.doctor_specialty || "Select..."} (Doctor)</option>
+                                    <option value="General Practitioner">General Practitioner</option>
+                                    <option value="Emergency">Emergency</option>
+                                    <option value="Cardiologist">Cardiologist</option>
+                                    <option value="Orthopedic">Orthopedic</option>
+                                    <option value="Dermatologist">Dermatologist</option>
+                                    <option value="Neurologist">Neurologist</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Correct Severity</label>
+                                <input type="number" id="adminSeverity" min="1" max="5" value="${c.doctor_severity || c.ai_severity}">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Training Notes (Reasoning)</label>
+                            <textarea id="adminNotes" rows="3" placeholder="Explain why this is the correct triage...">${c.doctor_notes || ""}</textarea>
+                        </div>
+                        <div style="display: flex; gap: 1rem;">
+                            <button onclick="submitAdminFeedback('${caseId}')" class="btn btn-primary" style="flex: 1;">Submit Correction</button>
+                            <button onclick="markAsCorrect('${caseId}', '${c.ai_specialty}', ${c.ai_severity})" class="btn btn-success" style="flex: 1; background-color: var(--success-color); color: white;">✅ Mark as Correct</button>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                content.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+
+        function closeReviewModal() {
+            document.getElementById('reviewModal').style.display = 'none';
+        }
+
+        async function submitAdminFeedback(caseId) {
+            const specialty = document.getElementById('adminSpecialty').value;
+            const severity = parseInt(document.getElementById('adminSeverity').value);
+            const notes = document.getElementById('adminNotes').value;
+
+            try {
+                const result = await submitAdminReview(caseId, {
+                    case_id: caseId,
+                    correct_specialty: specialty,
+                    correct_severity: severity,
+                    doctor_notes: notes
+                });
+
+                alert(`Training submitted! New Score: ${result.validation_score.toFixed(2)}`);
+                closeReviewModal();
+                loadRecentCases();
+                loadAnalytics();
+            } catch (error) {
+                alert("Error: " + error.message);
+            }
+        }
+
+        function markAsCorrect(caseId, specialty, severity) {
+            document.getElementById('adminSpecialty').value = specialty;
+            document.getElementById('adminSeverity').value = severity;
+            document.getElementById('adminNotes').value = "Correctly identified. Good job.";
+            submitAdminFeedback(caseId);
+        }
+
+        async function deleteCase(caseId) {
+            if (!confirm(`Are you sure you want to delete case ${caseId}? This cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                await apiCall(`/admin/case/${caseId}`, "DELETE", null, true);
+                alert("Case deleted successfully.");
+                loadRecentCases();
+                loadStats();
+            } catch (error) {
+                alert("Failed to delete case: " + error.message);
             }
         }
 
@@ -158,3 +405,4 @@
 </body>
 
 </html>
+```

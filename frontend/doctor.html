@@ -91,7 +91,7 @@
                     if (c.assigned_to === currentUser.username) {
                         card.style.backgroundColor = '#e3f2fd'; // Highlight assigned cases
                     } else if (c.assigned_to) {
-                        card.style.opacity = '0.6'; // Dim other assigned cases (shouldn't happen with API filter but good safety)
+                        card.style.opacity = '0.6'; // Dim other assigned cases
                     }
 
                     card.onclick = () => loadCaseDetail(c.case_id);
@@ -134,7 +134,6 @@
                 const c = await getCaseDetail(caseId);
 
                 const isAssignedToMe = c.assigned_to === currentUser.username;
-                const isAssignedToOther = c.assigned_to && !isAssignedToMe;
 
                 let actionButton = '';
                 if (!c.assigned_to) {
@@ -190,8 +189,22 @@
 
                         ${isAssignedToMe ? `
                         <div class="mt-2" style="border-top: 2px solid #eee; padding-top: 1rem;">
-                            <h3>Doctor Feedback & Validation</h3>
-                            <form id="validationForm">
+                            <h3>Clinical Treatment</h3>
+                            <div class="form-group">
+                                <label>Clinical Notes (Treatment Plan)</label>
+                                <textarea id="clinicalNotes" rows="4" placeholder="Enter treatment details..."></textarea>
+                            </div>
+                            <button onclick="markAsTreated('${caseId}')" class="btn btn-success" style="width: 100%; background-color: var(--success-color); color: white;">Mark as Treated</button>
+                            
+                            <button onclick="markAsTreatedAndTrain('${caseId}')" class="btn" style="width: 100%; background: linear-gradient(135deg, #2e7d32, #66bb6a); color: white; margin-top: 0.5rem; font-weight: 600;">✅ Mark as Treated & Train AI</button>
+                            
+                            <div class="mt-2 text-center">
+                                <button onclick="toggleFeedback()" class="btn btn-secondary" style="font-size: 0.9rem;">Report AI Issue / Give Feedback (Optional)</button>
+                            </div>
+                            
+                            <div id="feedbackSection" style="display: none; margin-top: 1rem; background: #f0f8ff; padding: 1rem; border-radius: 8px; text-align: left;">
+                                <h4>AI Feedback</h4>
+                                <p style="font-size: 0.9rem; color: var(--text-light);">Help improve the AI by correcting any mistakes.</p>
                                 <div class="grid">
                                     <div class="form-group">
                                         <label>Correct Specialty</label>
@@ -203,7 +216,6 @@
                                             <option value="Orthopedic">Orthopedic</option>
                                             <option value="Dermatologist">Dermatologist</option>
                                             <option value="Neurologist">Neurologist</option>
-                                            <!-- Add more as needed -->
                                         </select>
                                     </div>
                                     <div class="form-group">
@@ -212,11 +224,11 @@
                                     </div>
                                 </div>
                                 <div class="form-group">
-                                    <label>Clinical Notes (Crucial for AI Learning)</label>
-                                    <textarea id="docNotes" rows="4" placeholder="Explain your diagnosis and any corrections..."></textarea>
+                                    <label>Feedback Notes</label>
+                                    <textarea id="docFeedbackNotes" rows="3" placeholder="Explain the AI's mistake..."></textarea>
                                 </div>
-                                <button type="button" onclick="submitFeedback('${caseId}')" class="btn btn-success" style="width: 100%; background-color: var(--success-color); color: white;">Submit & Train AI</button>
-                            </form>
+                                <button onclick="submitFeedback('${caseId}')" class="btn btn-primary">Submit Feedback</button>
+                            </div>
                         </div>
                         ` : ''}
                     </div>
@@ -230,21 +242,44 @@
             try {
                 await attendCase(caseId);
                 loadCaseDetail(caseId); // Reload to show form
-                loadQueue(); // Refresh queue to show locked status
+                loadQueue(); // Refresh queue
             } catch (error) {
                 alert("Failed to attend case: " + error.message);
             }
         }
 
+        async function markAsTreated(caseId) {
+            const notes = document.getElementById('clinicalNotes').value;
+            if (!notes) {
+                alert("Please enter clinical notes before marking as treated.");
+                return;
+            }
+
+            try {
+                await resolveCase(caseId, notes);
+                alert("Case marked as treated!");
+                loadQueue();
+                document.getElementById('caseDetailArea').innerHTML = `
+                    <div class="card text-center" style="padding: 3rem;">
+                        <h3 style="color: var(--success-color);">Case Treated!</h3>
+                        <p>The case has been removed from the queue.</p>
+                        <button onclick="loadQueue()" class="btn btn-secondary mt-1">Select Next Case</button>
+                    </div>
+                `;
+            } catch (error) {
+                alert("Error: " + error.message);
+            }
+        }
+
+        function toggleFeedback() {
+            const section = document.getElementById('feedbackSection');
+            section.style.display = section.style.display === 'none' ? 'block' : 'none';
+        }
+
         async function submitFeedback(caseId) {
             const specialty = document.getElementById('docSpecialty').value;
             const severity = parseInt(document.getElementById('docSeverity').value);
-            const notes = document.getElementById('docNotes').value;
-
-            if (!notes || notes.length < 10) {
-                alert("Please provide detailed clinical notes (at least 10 chars) to help the AI learn.");
-                return;
-            }
+            const notes = document.getElementById('docFeedbackNotes').value;
 
             try {
                 const result = await submitValidation({
@@ -255,18 +290,59 @@
                 });
 
                 alert(`Feedback submitted! AI Learning Score: ${result.validation_score.toFixed(2)}`);
-                loadQueue(); // Refresh queue
-                document.getElementById('caseDetailArea').innerHTML = `
-                    <div class="card text-center" style="padding: 3rem;">
-                        <h3 style="color: var(--success-color);">Case Completed!</h3>
-                        <p>Thank you for your feedback. The AI has been updated.</p>
-                        <button onclick="loadQueue()" class="btn btn-secondary mt-1">Select Next Case</button>
-                    </div>
-                `;
+                toggleFeedback(); // Hide section
             } catch (error) {
                 alert("Error submitting feedback: " + error.message);
             }
         }
+
+        async function markAsTreatedAndTrain(caseId) {
+            const clinicalNotes = document.getElementById('clinicalNotes').value;
+            if (!clinicalNotes) {
+                alert("Please enter clinical notes before proceeding.");
+                return;
+            }
+
+            // Pre-populate feedback fields with the form data
+            const specialty = document.getElementById('docSpecialty') ? document.getElementById('docSpecialty').value : null;
+            const severity = document.getElementById('docSeverity') ? parseInt(document.getElementById('docSeverity').value) : null;
+
+            // If feedback section is visible, use those values, otherwise prompt
+            let feedbackNotes = clinicalNotes;
+            let finalSpecialty = specialty;
+            let finalSeverity = severity;
+
+            // If feedback section isn't visible, use AI's assessment as default (assuming it's correct)
+            const c = await getCaseDetail(caseId);
+            if (!specialty) {
+                finalSpecialty = c.ai_specialty;
+            }
+            if (!severity) {
+                finalSeverity = c.ai_severity;
+            }
+
+            try {
+                const result = await apiCall("/triage/resolve-and-train", "POST", {
+                    case_id: caseId,
+                    correct_specialty: finalSpecialty,
+                    correct_severity: finalSeverity,
+                    doctor_notes: feedbackNotes
+                }, true);
+
+                alert(`Case treated and AI trained! Learning Score: ${result.validation_score.toFixed(2)}`);
+                loadQueue();
+                document.getElementById('caseDetailArea').innerHTML = `
+                    <div class="card text-center" style="padding: 3rem;">
+                        <h3 style="color: var(--success-color);">✅ Case Treated & AI Trained!</h3>
+                        <p>The case has been marked as treated and the AI has learned from this case.</p>
+                        <button onclick="loadQueue()" class="btn btn-secondary mt-1">Select Next Case</button>
+                    </div>
+                `;
+            } catch (error) {
+                alert("Error: " + error.message);
+            }
+        }
+
 
         init();
     </script>

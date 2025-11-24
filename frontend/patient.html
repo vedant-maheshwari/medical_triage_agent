@@ -29,8 +29,18 @@
                 <form id="triageForm">
                     <div class="form-group">
                         <label for="description">Describe your symptoms</label>
-                        <textarea id="description" rows="5"
-                            placeholder="E.g., Sharp pain in left arm, started 2 hours ago..."></textarea>
+                        <div style="position: relative;">
+                            <textarea id="description" rows="5"
+                                placeholder="E.g., Sharp pain in left arm, started 2 hours ago..."></textarea>
+                            <button type="button" id="micBtn" class="btn btn-secondary"
+                                style="position: absolute; bottom: 10px; right: 10px; border-radius: 50%; width: 40px; height: 40px; padding: 0; display: flex; align-items: center; justify-content: center;"
+                                title="Speak symptoms">
+                                🎤
+                            </button>
+                        </div>
+                        <p id="micStatus"
+                            style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.5rem; display: none;">
+                            Listening...</p>
                     </div>
 
                     <div class="form-group">
@@ -90,6 +100,54 @@
 
     <script src="app.js"></script>
     <script>
+        // Voice Input Logic
+        const micBtn = document.getElementById('micBtn');
+        const micStatus = document.getElementById('micStatus');
+        const descInput = document.getElementById('description');
+
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const recognition = new SpeechRecognition();
+
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US'; // Could be dynamic based on user preference
+
+            micBtn.onclick = () => {
+                if (micStatus.style.display === 'block') {
+                    recognition.stop();
+                } else {
+                    recognition.start();
+                }
+            };
+
+            recognition.onstart = () => {
+                micStatus.style.display = 'block';
+                micStatus.textContent = "Listening...";
+                micBtn.style.backgroundColor = "#ffcdd2"; // Light red
+            };
+
+            recognition.onend = () => {
+                micStatus.style.display = 'none';
+                micBtn.style.backgroundColor = ""; // Reset
+            };
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                const currentText = descInput.value;
+                descInput.value = currentText ? currentText + " " + transcript : transcript;
+            };
+
+            recognition.onerror = (event) => {
+                console.error("Speech recognition error", event.error);
+                micStatus.textContent = "Error: " + event.error;
+                setTimeout(() => { micStatus.style.display = 'none'; }, 2000);
+            };
+        } else {
+            micBtn.style.display = 'none'; // Hide if not supported
+            console.log("Web Speech API not supported");
+        }
+
         document.getElementById('triageForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 

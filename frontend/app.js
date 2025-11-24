@@ -117,8 +117,20 @@ async function attendCase(caseId) {
     return apiCall(`/triage/attend/${caseId}`, "POST", null, true);
 }
 
+async function resolveCase(caseId, notes) {
+    return apiCall("/triage/resolve", "POST", { case_id: caseId, clinical_notes: notes }, true);
+}
+
 async function submitValidation(validationData) {
     return apiCall("/triage/validate", "POST", validationData, true);
+}
+
+async function previewPrompt(description) {
+    return apiCall("/admin/prompt/preview", "POST", { description: description }, true);
+}
+
+async function submitAdminReview(caseId, validationData) {
+    return apiCall(`/admin/review/${caseId}`, "POST", validationData, true);
 }
 
 async function getAnalytics() {

@@ -46,7 +46,9 @@ class TriageResponse(BaseModel):
     urgency_minutes: int
     recommended_action: str
     priority: str
-    status: str = "pending"
+    recommended_action: str
+    priority: str
+    clinical_status: str = "pending"
 
 class DoctorValidation(BaseModel):
     case_id: str
@@ -60,6 +62,10 @@ class DoctorValidation(BaseModel):
             raise ValueError("Severity must be between 1-5")
         return v
 
+class CaseResolution(BaseModel):
+    case_id: str
+    clinical_notes: str
+
 class CaseDetail(BaseModel):
     case_id: str
     timestamp: datetime
@@ -69,8 +75,12 @@ class CaseDetail(BaseModel):
     ai_severity: int
     ai_notes: str
     has_image: bool
-    status: str = "pending" # pending, in_progress, completed
+    ai_notes: str
+    has_image: bool
+    clinical_status: str = "pending" # pending, in_progress, treated
+    ai_status: str = "pending_review" # pending_review, reviewed
     assigned_to: Optional[str] = None
+    doctor_notes: Optional[str] = None
 
 class LearningAnalytics(BaseModel):
     total_feedback: int

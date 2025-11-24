@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Query
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,7 +29,13 @@ from app.services import (
     Triage,
     assign_case,
     create_user,
-    get_user_by_username
+    get_user_by_username,
+    analyze_triage, # Added
+    resolve_case, # Added
+    resolve_and_train, # Added for treat & train button
+    _construct_system_prompt, # Added for prompt inspector
+    get_relevant_lessons, # Added for prompt inspector
+    delete_case # Added for admin tools
 )
 from app.models import (
     TriageRequest, 
@@ -40,7 +46,9 @@ from app.models import (
     CorrectionResponse,
     AdminStats,
     User,
-    Token
+    Token,
+    CaseResolution, # Added
+    Triage # Added
 )
 from app.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES, 
@@ -212,14 +220,15 @@ async def get_pending_reviews_endpoint(current_user: User = Depends(get_current_
     try:
         pending_cases = get_pending_reviews()
         
-        # Filter for pending or assigned to current user
+        # Filter for pending or assigned to current user (Clinical Workflow)
         filtered_cases = [
             c for c in pending_cases 
-            if c.get("status") == "pending" or c.get("assigned_to") == current_user.username
+            if c.get("clinical_status") == "pending" or c.get("assigned_to") == current_user.username
         ]
         
         result = []
-        for case in pending_cases:
+        result = []
+        for case in filtered_cases:
             result.append(CaseDetail(
                 case_id=str(case["_id"]),
                 timestamp=case["timestamp"],
@@ -229,7 +238,8 @@ async def get_pending_reviews_endpoint(current_user: User = Depends(get_current_
                 ai_severity=case["ai_severity"],
                 ai_notes=case["ai_notes"],
                 has_image=case.get("input_image") is not None,
-                status=case.get("status", "pending"),
+                clinical_status=case.get("clinical_status", "pending"),
+                ai_status=case.get("ai_status", "pending_review"),
                 assigned_to=case.get("assigned_to")
             ))
         
@@ -262,7 +272,8 @@ async def get_case_detail(case_id: str, current_user: User = Depends(get_current
             "doctor_notes": case.get("doctor_notes"),
             "feedback_given": case.get("feedback_given", False),
             "correction_score": case.get("correction_score"),
-            "status": case.get("status", "pending"),
+            "clinical_status": case.get("clinical_status", "pending"),
+            "ai_status": case.get("ai_status", "pending_review"),
             "assigned_to": case.get("assigned_to")
         }
         
@@ -306,6 +317,31 @@ async def attend_case(case_id: str, current_user: User = Depends(get_current_doc
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/triage/resolve")
+async def resolve_case_endpoint(resolution: CaseResolution, current_user: User = Depends(get_current_doctor)):
+    """Mark case as treated (Clinical Workflow)"""
+    try:
+        resolve_case(resolution.case_id, resolution.clinical_notes)
+        return {"status": "success", "message": "Case marked as treated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/triage/resolve-and-train", response_model=CorrectionResponse)
+async def resolve_and_train_endpoint(validation: DoctorValidation, current_user: User = Depends(get_current_doctor)):
+    """Mark case as treated AND submit feedback to train AI"""
+    try:
+        correction_score, changes = resolve_and_train(
+            case_id=validation.case_id,
+            specialty=validation.correct_specialty,
+            severity=validation.correct_severity,
+            notes=validation.doctor_notes,
+            is_admin=(current_user.role == "admin")
+        )
+        return CorrectionResponse(validation_score=correction_score, changes_made=changes)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/triage/validate", response_model=CorrectionResponse)
 async def validate_assessment(validation: DoctorValidation, current_user: User = Depends(get_current_doctor)):
     """
@@ -319,7 +355,8 @@ async def validate_assessment(validation: DoctorValidation, current_user: User =
             notes=validation.doctor_notes or ""
         )
         
-        score, changes = submit_correction(validation.case_id, doctor_result)
+        is_admin = current_user.role == "admin"
+        score, changes = submit_correction(validation.case_id, doctor_result, is_admin=is_admin)
         
         return CorrectionResponse(
             status="validated",
@@ -351,17 +388,17 @@ async def get_recent_cases(limit: int = 15):
     try:
         feedback = get_collection("feedback")
         recent = feedback.find(
-            {"feedback_given": True},
+            {}, # Show all cases, not just reviewed ones
             {
                 "_id": 1, "patient_id": 1, "ai_specialty": 1, "doctor_specialty": 1,
-                "correction_score": 1, "timestamp": 1, "severity_gap": 1
+                "correction_score": 1, "timestamp": 1, "severity_gap": 1, "feedback_given": 1
             }
         ).sort("timestamp", -1).limit(limit)
         
         cases = []
         for doc in recent:
             cases.append({
-                "case_id": str(doc["_id"])[-6:],
+                "case_id": str(doc["_id"]),
                 "patient_id": doc["patient_id"],
                 "ai_specialty": doc["ai_specialty"],
                 "doctor_specialty": doc.get("doctor_specialty", "None"),
@@ -398,6 +435,71 @@ async def get_admin_stats(current_user: User = Depends(get_current_admin)):
             reviewed_cases=reviewed_cases,
             total_lessons=total_lessons
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/admin/prompt/preview")
+async def preview_prompt(request: TriageRequest, current_user: User = Depends(get_current_admin)):
+    """Preview the system prompt for a given complaint (Admin Tool)"""
+    try:
+        # Get complaint text from request
+        complaint = request.description or ""
+        if not complaint:
+            raise HTTPException(status_code=400, detail="No complaint text provided")
+        
+        # Simulate RAG retrieval
+        relevant_lessons = get_relevant_lessons(complaint)
+        
+        # Convert ObjectId to string for JSON serialization
+        for lesson in relevant_lessons:
+            if "_id" in lesson:
+                lesson["_id"] = str(lesson["_id"])
+        
+        # Construct prompt
+        system_prompt = _construct_system_prompt(relevant_lessons)
+        
+        return {
+            "system_prompt": system_prompt,
+            "relevant_lessons": relevant_lessons
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/admin/review/{case_id}")
+async def admin_review_case(case_id: str, validation: DoctorValidation, current_user: User = Depends(get_current_admin)):
+    """Submit admin review/correction for a case"""
+    try:
+        doctor_result = Triage(
+            specialty=validation.correct_specialty,
+            severity=validation.correct_severity,
+            notes=validation.doctor_notes or ""
+        )
+        
+        score, changes = submit_correction(case_id, doctor_result, is_admin=True)
+        
+        return CorrectionResponse(
+            status="reviewed",
+            case_id=case_id,
+            validation_score=score,
+            changes=changes
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/admin/case/{case_id}")
+async def delete_case_endpoint(case_id: str, current_user: User = Depends(get_current_admin)):
+    """Delete a case (Admin only)"""
+    try:
+        success = delete_case(case_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Case not found or could not be deleted")
+        return {"status": "success", "message": f"Case {case_id} deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
