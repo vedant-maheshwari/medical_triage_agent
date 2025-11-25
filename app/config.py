@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     triage_model: str = os.getenv("TRIAGE_MODEL", "gpt-4o")
     
+    # Cohere - for multilingual embeddings
+    cohere_api_key: str = os.getenv("COHERE_API_KEY", "")
+    
     # Application
     debug: bool = os.getenv("DEBUG", "false").lower() == "true"
     secret_key: str = os.getenv("SECRET_KEY", "supersecretkey123")

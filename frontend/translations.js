@@ -48,6 +48,7 @@ const translations = {
         // Voice Input
         voiceNotSupported: "Voice input not supported in this browser",
         voiceError: "Voice recognition error",
+        lowConfidence: "Low recognition quality",
 
         // Language
         language: "Language",
@@ -103,6 +104,7 @@ const translations = {
         // Voice Input
         voiceNotSupported: "इस ब्राउज़र में वॉइस इनपुट समर्थित नहीं है",
         voiceError: "वॉइस पहचान त्रुटि",
+        lowConfidence: "कम गुणवत्ता की पहचान",
 
         // Language
         language: "भाषा",

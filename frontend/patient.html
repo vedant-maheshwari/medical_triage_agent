@@ -122,7 +122,8 @@
             const recognition = new SpeechRecognition();
 
             recognition.continuous = false;
-            recognition.interimResults = false;
+            recognition.interimResults = true; // OPTIMIZED: Enable real-time transcription
+            recognition.maxAlternatives = 1;   // OPTIMIZED: Faster processing
             recognition.lang = currentLanguage === 'hi' ? 'hi-IN' : 'en-IN';
             window.recognition = recognition; // Store globally for language updates
 
@@ -134,21 +135,60 @@
                 }
             };
 
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                let finalTranscript = '';
+
+                // Process all results (interim + final)
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    const confidence = event.results[i][0].confidence || 1.0;
+
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript + ' ';
+
+                        // Show confidence warning if low
+                        if (confidence < 0.7) {
+                            console.warn(`Low voice recognition confidence: ${confidence}`);
+                            micStatus.textContent = `⚠️ ${t('lowConfidence')}: "${transcript}" (${Math.round(confidence * 100)}%)`;
+                            micStatus.style.color = 'orange';
+                        }
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+
+                // Show interim results in real-time (Hindi users see what's being recognized)
+                if (interimTranscript) {
+                    micStatus.textContent = `${t('listening')}: "${interimTranscript}"`;
+                    micStatus.style.display = 'block';
+                    micStatus.style.color = '';
+                }
+
+                // Add final transcript to textarea
+                if (finalTranscript) {
+                    const currentText = descInput.value;
+                    descInput.value = currentText ? currentText + " " + finalTranscript.trim() : finalTranscript.trim();
+                }
+            };
+
+            // Auto-stop after 10 seconds to prevent long waits
+            let recognitionTimeout;
             recognition.onstart = () => {
                 micStatus.style.display = 'block';
                 micStatus.textContent = t('listening');
                 micBtn.style.backgroundColor = "#ffcdd2"; // Light red
+
+                // Set 10 second timeout
+                recognitionTimeout = setTimeout(() => {
+                    recognition.stop();
+                }, 10000);
             };
 
             recognition.onend = () => {
+                clearTimeout(recognitionTimeout);
                 micStatus.style.display = 'none';
                 micBtn.style.backgroundColor = ""; // Reset
-            };
-
-            recognition.onresult = (event) => {
-                const transcript = event.results[0][0].transcript;
-                const currentText = descInput.value;
-                descInput.value = currentText ? currentText + " " + transcript : transcript;
             };
 
             recognition.onerror = (event) => {

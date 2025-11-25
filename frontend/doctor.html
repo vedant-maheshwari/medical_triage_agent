@@ -281,6 +281,17 @@
             const severity = parseInt(document.getElementById('docSeverity').value);
             const notes = document.getElementById('docFeedbackNotes').value;
 
+            if (!specialty || !severity || !notes) {
+                alert("Please provide all feedback fields.");
+                return;
+            }
+
+            // Show loading indicator
+            const submitBtn = event.target;
+            const originalText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<div class="spinner" style="width: 16px; height: 16px; border-width: 2px; display: inline-block; margin: 0;"></div> Submitting...';
+
             try {
                 const result = await submitValidation({
                     case_id: caseId,
@@ -293,6 +304,9 @@
                 toggleFeedback(); // Hide section
             } catch (error) {
                 alert("Error submitting feedback: " + error.message);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
             }
         }
 
@@ -303,30 +317,40 @@
                 return;
             }
 
-            // Pre-populate feedback fields with the form data
+            // Get feedback values if available, otherwise use AI's assessment
             const specialty = document.getElementById('docSpecialty') ? document.getElementById('docSpecialty').value : null;
             const severity = document.getElementById('docSeverity') ? parseInt(document.getElementById('docSeverity').value) : null;
 
-            // If feedback section is visible, use those values, otherwise prompt
-            let feedbackNotes = clinicalNotes;
             let finalSpecialty = specialty;
             let finalSeverity = severity;
 
-            // If feedback section isn't visible, use AI's assessment as default (assuming it's correct)
+            // If feedback section values not provided, use AI's assessment
             const c = await getCaseDetail(caseId);
-            if (!specialty) {
+            if (!finalSpecialty || finalSpecialty === '') {
                 finalSpecialty = c.ai_specialty;
             }
-            if (!severity) {
+            if (!finalSeverity || isNaN(finalSeverity)) {
                 finalSeverity = c.ai_severity;
             }
+
+            // Validate we have required data
+            if (!finalSpecialty || !finalSeverity) {
+                alert("Error: Missing specialty or severity data. Please use the feedback section to provide corrections.");
+                return;
+            }
+
+            // Show loading indicator
+            const submitBtn = event.target;
+            const originalText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<div class="spinner" style="width: 16px; height: 16px; border-width: 2px; display: inline-block; margin: 0;"></div> Processing...';
 
             try {
                 const result = await apiCall("/triage/resolve-and-train", "POST", {
                     case_id: caseId,
                     correct_specialty: finalSpecialty,
                     correct_severity: finalSeverity,
-                    doctor_notes: feedbackNotes
+                    doctor_notes: clinicalNotes
                 }, true);
 
                 alert(`Case treated and AI trained! Learning Score: ${result.validation_score.toFixed(2)}`);
@@ -340,6 +364,9 @@
                 `;
             } catch (error) {
                 alert("Error: " + error.message);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
             }
         }
 

@@ -32,25 +32,70 @@ from app.config import settings, SPECIALTY_OPTIONS
 from app.models import User, UserInDB, Triage
 from app.models import TriageResponse, CaseDetail, LearningAnalytics, CorrectionResponse
 from app.config import settings
-from langchain_openai import OpenAIEmbeddings
+import cohere
 from openai import OpenAI
 # Initialize clients
 client = OpenAI(api_key=settings.openai_api_key)
 llm = ChatOpenAI(model="gpt-4o", temperature=0, openai_api_key=settings.openai_api_key)
+# Global Cohere client for multilingual embeddings
+_cohere_client = None
+
+def get_cohere_client():
+    """Get Cohere client (singleton)"""
+    global _cohere_client
+    if _cohere_client is None:
+        try:
+            import cohere
+            _cohere_client = cohere.ClientV2(api_key=settings.cohere_api_key)
+            print("✅ Cohere multilingual embedding client loaded successfully")
+        except Exception as e:
+            raise RuntimeError(f"Failed to load Cohere client: {e}")
+    return _cohere_client
+
 # Global embedding model instance
 _embedding_model = None
+
 def get_embedding_model():
-    """Load OpenAI embedding model once (singleton)"""
+    """
+    Returns Cohere multilingual embedding function.
+    
+    Uses Cohere's embed-multilingual-v3.0 model which natively understands:
+    - Pure Hindi (Devanagari script)
+    - Hinglish (Hindi in Roman script)
+    - English
+    - Mixed code-switching
+    
+    No translation or language detection needed!
+    """
+    class CohereEmbeddingWrapper:
+        """Wrapper to make Cohere embeddings compatible with existing RAG code"""
+        def __init__(self):
+            self.client = get_cohere_client()
+        
+        def embed_query(self, text: str) -> list:
+            """Embed a single query text"""
+            response = self.client.embed(
+                texts=[text],
+                model="embed-multilingual-v3.0",
+                input_type="search_query",  # For RAG search queries
+                embedding_types=["float"]
+            )
+            return response.embeddings.float[0]
+        
+        def embed_documents(self, texts: list) -> list:
+            """Embed multiple documents"""
+            response = self.client.embed(
+                texts=texts,
+                model="embed-multilingual-v3.0",
+                input_type="search_document",  # For documents being indexed
+                embedding_types=["float"]
+            )
+            return response.embeddings.float
+    
     global _embedding_model
     if _embedding_model is None:
-        try:
-            _embedding_model = OpenAIEmbeddings(
-                model="text-embedding-3-small",
-                api_key=settings.openai_api_key
-            )
-            print("✅ Embedding model loaded successfully")
-        except Exception as e:
-            raise RuntimeError(f"Failed to load embedding model: {e}")
+        _embedding_model = CohereEmbeddingWrapper()
+        print("✅ Multilingual embedding model loaded (Cohere embed-multilingual-v3.0)")
     return _embedding_model
 
 # ------------------------------------------------------------
@@ -404,16 +449,162 @@ def store_lesson(case_id: str, complaint: str, ai_result: Triage, doctor_result:
         traceback.print_exc()
         return None
 
+def detect_language(text: str) -> str:
+    """
+    Detect if text is primarily Hindi/Hinglish or English.
+    Returns 'hi' or 'en'.
+    
+    Handles:
+    - Pure Hindi (Devanagari script)
+    - Hinglish (Hindi words written in English/Roman script)
+    - Mixed code-switching
+    """
+    if not text:
+        return "en"
+    
+    text_lower = text.lower()
+    
+    # Count Devanagari characters
+    import re
+    devanagari_pattern = re.compile(r'[\u0900-\u097F]')
+    devanagari_count = len(devanagari_pattern.findall(text))
+    total_chars = len([c for c in text if c.isalpha()])
+    
+    if total_chars == 0:
+        return "en"
+    
+    # If >30% Devanagari characters, definitely Hindi
+    if (devanagari_count / total_chars) > 0.3:
+        return "hi"
+    
+    # CRITICAL: Check for Hinglish (common Hindi words in Roman script)
+    # This is essential for India where many people type Hindi using English letters
+    hinglish_keywords = [
+        # Body parts
+        'haath', 'hath', 'pair', 'paon', 'per', 'सिर', 'sar', 'sir',
+        'pet', 'पेट', 'kaan', 'kan', 'aankh', 'ankh', 'मुंह', 'munh', 'muh',
+        'गला', 'gala', 'gardan',
+        
+        # Common medical terms
+        'dard', 'दर्द', 'pain', 'sujan', 'suja', 'khujli', 'khaj',
+        'bukhar', 'बुखार', 'fever', 'jukam', 'thand', 'khansi',
+        
+        # Verbs/descriptors
+        'ho', 'hai', 'रहा', 'raha', 'rahi', 'mere', 'मेरे', 'mera', 'meri',
+        'mujhe', 'मुझे', 'aap', 'आप', 'kya', 'क्या', 'kahan', 'kahaan', 'कहां',
+        'kaisa', 'kaise', 'kyun', 'kyunki',
+        
+        # Time/duration
+        'din', 'दिन', 'raat', 'रात', 'subah', 'shaam',
+        'kal', 'aaj', 'parso',
+        
+        # Common phrases
+        'nahi', 'नहीं', 'nahin', 'bahut', 'बहुत', 'thoda', 'jyada',
+        'kaafi', 'bilkul'
+    ]
+    
+    # Count Hinglish word matches
+    words = text_lower.split()
+    hinglish_matches = sum(1 for word in words if any(kw in word for kw in hinglish_keywords))
+    
+    # If >25% of words are Hinglish keywords, treat as Hindi
+    if len(words) > 0 and (hinglish_matches / len(words)) > 0.25:
+        print(f"   🇮🇳 Hinglish detected ({hinglish_matches}/{len(words)} words matched)")
+        return "hi"
+    
+    return "en"
+
+def translate_for_search(text: str, target_lang: str = "en") -> str:
+    """
+    Translate medical complaint to target language for better RAG search.
+    Uses fast GPT-4o-mini for quick translation.
+    """
+    try:
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import HumanMessage
+        
+        llm = ChatOpenAI(
+            model="gpt-4o-mini",  # Fast and cheap
+            temperature=0,
+            api_key=settings.openai_api_key
+        )
+        
+        prompt = f"Translate this medical complaint to {target_lang}. Only return the translation, nothing else:\n\n{text}"
+        response = llm.invoke([HumanMessage(content=prompt)])
+        translated = response.content.strip()
+        
+        return translated if translated else text
+    except Exception as e:
+        print(f"⚠️  Translation failed: {e}")
+        return text  # Fallback to original
+
+def check_semantic_relevance_llm(query: str, lesson_complaint: str, lesson_notes: str = "") -> float:
+    """
+    Use LLM to determine if lesson is relevant to query based on medical context.
+    Returns relevance score 0.0-1.0
+    
+    This is MUCH more robust than keyword matching:
+    - Works in any language
+    - Understands medical synonyms
+    - Handles complex descriptions
+    - No fixed keyword list needed
+    """
+    try:
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import HumanMessage
+        
+        llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0,
+            api_key=settings.openai_api_key
+        )
+        
+        # Quick relevance check
+        prompt = f"""You are a medical triage expert. Determine if these two medical complaints are about the SAME or SIMILAR medical issue/body region.
+
+Query: "{query}"
+Past Case: "{lesson_complaint}"
+
+Consider:
+- Same body part/region (e.g., both about hand, or both about chest)
+- Similar symptoms (e.g., both involve pain, swelling, infection)
+- Related medical conditions
+
+Return ONLY a number 0.0-1.0:
+- 1.0 = Highly relevant (same body part and similar symptoms)
+- 0.7-0.9 = Related (same region or similar condition)
+- 0.3-0.6 = Somewhat related (might be useful)
+- 0.0-0.2 = Not relevant (different body part/condition)
+
+Score:"""
+        
+        response = llm.invoke([HumanMessage(content=prompt)])
+        score_text = response.content.strip()
+        
+        # Parse score
+        try:
+            score = float(score_text)
+            return max(0.0, min(1.0, score))  # Clamp to 0-1
+        except:
+            # If can't parse, return neutral
+            return 0.5
+            
+    except Exception as e:
+        print(f"⚠️  LLM relevance check failed: {e}")
+        return 0.5  # Neutral score on failure
+
 def get_relevant_lessons(complaint: str, limit: int = 3) -> List[Dict]:
     """
-    FIXED: Works with LOCAL MongoDB without Atlas Vector Search dependency
-    Uses efficient numpy similarity calculation with proper error handling
+    Retrieve relevant past cases using vector similarity search.
+    Enhanced with LLM-based semantic relevance checking and higher threshold for better relevance.
+    
+    Returns:
+        List of lesson documents sorted by relevance (with _similarity score)
     """
-    if not complaint or not isinstance(complaint, str) or len(complaint.strip()) < 5:
-        print("⚠️  Invalid complaint for RAG search")
+    if not complaint or len(complaint.strip()) < 3:
         return []
     
-    print(f"\n🔍 RAG SEARCH: Looking for lessons similar to: '{complaint[:60]}...'")
+    print(f"\n🔍 RAG SEARCH: Looking for lessons similar to: '{complaint[:50]}...'")
     
     try:
         # Ensure collection exists
@@ -422,10 +613,16 @@ def get_relevant_lessons(complaint: str, limit: int = 3) -> List[Dict]:
         lessons = get_collection("learning_memory")
         embedding_model = get_embedding_model()
         
-        # Generate query embedding
+        # MULTILINGUAL EMBEDDINGS: No translation needed!
+        # Cohere's embed-multilingual-v3.0 natively understands:
+        # - Hindi (Devanagari): "मेरे हाथ में दर्द है"
+        # - Hinglish: "mere haath me dard hai"
+        # - English: "pain in my hand"
+        # All are semantically matched without any translation!
+        
         query_embedding = embedding_model.embed_query(complaint)
         query_vec = np.array(query_embedding)
-        print(f"✅ Generated query embedding (dimension: {len(query_embedding)})")
+        print(f"✅ Generated multilingual query embedding (dimension: {len(query_embedding)})")
         
         # Get recent lessons with embeddings (limit to 200 most recent for performance)
         all_lessons = list(lessons.find(
@@ -434,7 +631,7 @@ def get_relevant_lessons(complaint: str, limit: int = 3) -> List[Dict]:
                 "_id": 1, "case_id": 1, "complaint_text": 1, "lessons_learned": 1, 
                 "complaint_embedding": 1, "timestamp": 1, "ai_specialty": 1, 
                 "doctor_specialty": 1, "reasoning_patterns": 1, "clinical_insights": 1,
-                "ai_severity": 1, "doctor_severity": 1, "semantic_gap": 1
+                "ai_severity": 1, "doctor_severity": 1, "semantic_gap": 1, "doctor_notes": 1
             }
         ).sort("timestamp", -1).limit(200))
         
@@ -463,24 +660,39 @@ def get_relevant_lessons(complaint: str, limit: int = 3) -> List[Dict]:
                 lesson_norm = np.linalg.norm(lesson_emb) + 1e-8
                 similarity = np.dot(query_vec, lesson_emb) / (query_norm * lesson_norm)
                 
-                # Log all scores for debugging
-                # print(f"   - Similarity: {similarity:.3f} | {lesson.get('complaint_text', '')[:30]}...")
-
-                # Skip very low similarity matches
-                if similarity < 0.45:  # Lowered from 0.6 to 0.45 to catch shorter queries
+                # CRITICAL: Lowered threshold to 0.65 for better Hinglish/Hindi matching
+                # The LLM semantic check below will filter out false positives
+                if similarity < 0.65:
+                    continue
+                
+                # PHASE 2: LLM-based semantic relevance check (robust for any language/description)
+                # Uses GPT-4o-mini to determine if lesson is about same medical issue
+                llm_relevance = check_semantic_relevance_llm(
+                    query=complaint,  # Use original query (any language)
+                    lesson_complaint=lesson.get('complaint_text', ''),
+                    lesson_notes=lesson.get('doctor_notes', '')
+                )
+                
+                # Combined score: embedding similarity + LLM relevance
+                combined_score = (similarity * 0.6) + (llm_relevance * 0.4)
+                
+                if llm_relevance < 0.5:  # LLM says not relevant
+                    print(f"⏭️  Skipping (LLM relevance: {llm_relevance:.2f}): {lesson.get('complaint_text', '')[:50]}... (embedding: {similarity:.3f})")
                     continue
                     
-                # Add similarity score to lesson
-                lesson["_similarity"] = float(similarity)
+                # Add combined score to lesson (embedding + LLM relevance)
+                lesson["_similarity"] = float(combined_score)
+                lesson["_embedding_similarity"] = float(similarity)
+                lesson["_llm_relevance"] = float(llm_relevance)
                 scored_lessons.append(lesson)
-                print(f"✅ Match found (similarity: {similarity:.3f}): {lesson.get('complaint_text', '')[:50]}...")
+                print(f"✅ Match found (combined: {combined_score:.3f}, embed: {similarity:.3f}, LLM: {llm_relevance:.2f}): {lesson.get('complaint_text', '')[:50]}...")
                 
             except Exception as e:
                 print(f"⚠️  Error processing lesson {lesson.get('case_id', 'unknown')}: {e}")
                 continue
         
         if not scored_lessons:
-            print("❌ No relevant lessons found above similarity threshold (0.45)")
+            print("❌ No relevant lessons found above similarity threshold (0.70)")
             # Debug: Print top 3 rejected scores to help tuning
             try:
                 debug_scores = []
